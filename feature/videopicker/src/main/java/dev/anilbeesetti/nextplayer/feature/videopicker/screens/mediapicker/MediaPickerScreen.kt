@@ -26,10 +26,13 @@ import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -303,6 +306,7 @@ internal fun MediaPickerScreen(
                 showRenameAction = selectionManager.isSingleVideoSelected,
                 showInfoAction = selectionManager.isSingleVideoSelected,
                 showHideAction = selectionManager.selectionItems.isNotEmpty(),
+                showMoveAction = selectionManager.selectionItems.isNotEmpty(),
                 onPlayAction = {
                     onAction(MediaPickerAction.PlaySelectedItems(selectionManager.selectionItems))
                     selectionManager.exitSelectionMode()
@@ -325,6 +329,10 @@ internal fun MediaPickerScreen(
                 },
                 onHideAction = {
                     onAction(MediaPickerAction.RequestHideSelectedItems(selectionManager.selectionItems))
+                    selectionManager.exitSelectionMode()
+                },
+                onMoveAction = {
+                    onAction(MediaPickerAction.RequestMoveSelectedItems(selectionManager.selectionItems))
                     selectionManager.exitSelectionMode()
                 },
                 onDeleteAction = {
@@ -532,6 +540,13 @@ internal fun MediaPickerScreen(
         onSetPinAndHide = { onAction(MediaPickerAction.SetVaultPinAndHide(it)) },
         onDismiss = { onAction(MediaPickerAction.DismissHideFlow) },
     )
+
+    MoveFlowDialogs(
+        moveFlow = uiState.moveFlow,
+        onMoveToFolder = { onAction(MediaPickerAction.MoveItemsToFolder(it)) },
+        onCreateFolderAndMove = { onAction(MediaPickerAction.CreateFolderAndMoveItems(it)) },
+        onDismiss = { onAction(MediaPickerAction.DismissMoveFlow) },
+    )
 }
 
 @Composable
@@ -644,6 +659,103 @@ private fun HideFlowDialogs(
             )
         }
     }
+}
+
+@Composable
+private fun MoveFlowDialogs(
+    moveFlow: MoveFlowState,
+    onMoveToFolder: (String) -> Unit,
+    onCreateFolderAndMove: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    when (moveFlow) {
+        MoveFlowState.Idle -> Unit
+
+        MoveFlowState.Processing -> {
+            VaultProgressDialog(message = stringResource(R.string.moving_videos))
+        }
+
+        is MoveFlowState.SelectingFolder -> {
+            MoveToFolderDialog(
+                folders = moveFlow.folders,
+                onFolderSelected = onMoveToFolder,
+                onCreateFolder = onCreateFolderAndMove,
+                onDismiss = onDismiss,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MoveToFolderDialog(
+    modifier: Modifier = Modifier,
+    folders: List<Folder>,
+    onFolderSelected: (String) -> Unit,
+    onCreateFolder: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var newFolderName by rememberSaveable { mutableStateOf("") }
+
+    NextDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(R.string.move_to_folder)) },
+        modifier = modifier,
+        content = {
+            Column {
+                OutlinedTextField(
+                    value = newFolderName,
+                    onValueChange = { newFolderName = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text(text = stringResource(R.string.folder_name)) },
+                    singleLine = true,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                if (folders.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.no_folders_found),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
+                } else {
+                    LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
+                        items(items = folders, key = { it.path }) { folder ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { onFolderSelected(folder.path) }
+                                    .padding(vertical = 10.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Icon(
+                                    imageVector = NextIcons.Folder,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = folder.name,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = newFolderName.isNotBlank(),
+                onClick = { onCreateFolder(newFolderName) },
+            ) {
+                Text(text = stringResource(R.string.create_and_move))
+            }
+        },
+        dismissButton = { CancelButton(onClick = onDismiss) },
+    )
 }
 
 @Composable
@@ -790,11 +902,13 @@ private fun SelectionActionsSheet(
     showRenameAction: Boolean,
     showInfoAction: Boolean,
     showHideAction: Boolean,
+    showMoveAction: Boolean,
     onPlayAction: () -> Unit,
     onRenameAction: () -> Unit,
     onShareAction: () -> Unit,
     onInfoAction: () -> Unit,
     onHideAction: () -> Unit,
+    onMoveAction: () -> Unit,
     onDeleteAction: () -> Unit,
 ) {
     AnimatedVisibility(
@@ -858,6 +972,13 @@ private fun SelectionActionsSheet(
                         imageVector = NextIcons.HideSource,
                         title = stringResource(id = R.string.hide),
                         onClick = onHideAction,
+                    )
+                }
+                if (showMoveAction) {
+                    SelectionAction(
+                        imageVector = NextIcons.Move,
+                        title = stringResource(id = R.string.move),
+                        onClick = onMoveAction,
                     )
                 }
                 SelectionAction(

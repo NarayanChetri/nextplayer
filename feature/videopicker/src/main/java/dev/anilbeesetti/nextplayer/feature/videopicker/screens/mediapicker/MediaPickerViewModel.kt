@@ -1,6 +1,7 @@
 package dev.anilbeesetti.nextplayer.feature.videopicker.screens.mediapicker
 
 import android.net.Uri
+import android.os.Environment
 import androidx.compose.runtime.Stable
 import androidx.core.net.toUri
 import androidx.lifecycle.SavedStateHandle
@@ -13,6 +14,7 @@ import dev.anilbeesetti.nextplayer.core.data.repository.PreferencesRepository
 import dev.anilbeesetti.nextplayer.core.data.repository.VaultPinRepository
 import dev.anilbeesetti.nextplayer.core.data.repository.VaultRepository
 import dev.anilbeesetti.nextplayer.core.domain.GetRecentlyPlayedVideoUseCase
+import dev.anilbeesetti.nextplayer.core.domain.GetSortedFoldersUseCase
 import dev.anilbeesetti.nextplayer.core.domain.GetSortedMediaUseCase
 import dev.anilbeesetti.nextplayer.core.domain.GetSortedVideosUseCase
 import dev.anilbeesetti.nextplayer.core.domain.MediaHolder
@@ -44,6 +46,7 @@ class MediaPickerViewModel @Inject constructor(
     private val getSortedMediaUseCase: GetSortedMediaUseCase,
     private val getRecentlyPlayedVideoUseCase: GetRecentlyPlayedVideoUseCase,
     private val getSortedVideosUseCase: GetSortedVideosUseCase,
+    private val getSortedFoldersUseCase: GetSortedFoldersUseCase,
     private val mediaOperationsService: MediaOperationsService,
     private val mediaRepository: MediaRepository,
     private val preferencesRepository: PreferencesRepository,
@@ -88,6 +91,10 @@ class MediaPickerViewModel @Inject constructor(
             is MediaPickerAction.SetVaultPinAndHide -> setVaultPinAndHide(action.pin)
             MediaPickerAction.ConfirmHidePendingItems -> confirmHidePendingItems()
             MediaPickerAction.DismissHideFlow -> uiStateInternal.update { it.copy(hideFlow = HideFlowState.Idle) }
+            is MediaPickerAction.RequestMoveSelectedItems -> requestMoveSelectedItems(action.selectionItems)
+            is MediaPickerAction.MoveItemsToFolder -> moveItemsToFolder(action.targetPath)
+            is MediaPickerAction.CreateFolderAndMoveItems -> createFolderAndMoveItems(action.folderName)
+            MediaPickerAction.DismissMoveFlow -> uiStateInternal.update { it.copy(moveFlow = MoveFlowState.Idle) }
         }
     }
 
@@ -218,6 +225,34 @@ class MediaPickerViewModel @Inject constructor(
         uiStateInternal.update { it.copy(hideFlow = HideFlowState.Idle) }
     }
 
+    private fun requestMoveSelectedItems(selectedItems: Set<SelectionItem>) {
+        viewModelScope.launch {
+            val videoItems = selectedItems.toVideos()
+            if (videoItems.isEmpty()) return@launch
+            val folders = getSortedFoldersUseCase(null).first()
+            uiStateInternal.update {
+                it.copy(moveFlow = MoveFlowState.SelectingFolder(items = videoItems, folders = folders))
+            }
+        }
+    }
+
+    private fun moveItemsToFolder(targetPath: String) {
+        val pending = (uiStateInternal.value.moveFlow as? MoveFlowState.SelectingFolder)?.items ?: return
+        viewModelScope.launch {
+            uiStateInternal.update { it.copy(moveFlow = MoveFlowState.Processing) }
+            val targetDir = File(targetPath).apply { if (!exists()) mkdirs() }
+            val uris = pending.map { it.uriString.toUri() }
+            mediaOperationsService.moveMedia(uris, targetDir)
+            uiStateInternal.update { it.copy(moveFlow = MoveFlowState.Idle) }
+        }
+    }
+
+    private fun createFolderAndMoveItems(folderName: String) {
+        if (folderName.isBlank()) return
+        val moviesRoot = File(Environment.getExternalStorageDirectory(), Environment.DIRECTORY_MOVIES)
+        moveItemsToFolder(File(moviesRoot, folderName).path)
+    }
+
     private suspend fun Set<SelectionItem>.toVideos(): List<Video> {
         val preferences = uiStateInternal.value.preferences
         return flatMap { selectionItem ->
@@ -251,6 +286,7 @@ data class MediaPickerUiState(
     val preferences: ApplicationPreferences = ApplicationPreferences(),
     val mediaInfo: dev.anilbeesetti.nextplayer.core.model.MediaInfo? = null,
     val hideFlow: HideFlowState = HideFlowState.Idle,
+    val moveFlow: MoveFlowState = MoveFlowState.Idle,
 )
 
 sealed interface HideFlowState {
@@ -260,6 +296,12 @@ sealed interface HideFlowState {
     data object HowToFindInfo : HideFlowState
 
     data object Processing : HideFlowState
+}
+
+sealed interface MoveFlowState {
+    data object Idle : MoveFlowState
+    data class SelectingFolder(val items: List<Video>, val folders: List<Folder>) : MoveFlowState
+    data object Processing : MoveFlowState
 }
 
 sealed interface MediaPickerAction {
@@ -276,6 +318,10 @@ sealed interface MediaPickerAction {
     data class SetVaultPinAndHide(val pin: String) : MediaPickerAction
     data object ConfirmHidePendingItems : MediaPickerAction
     data object DismissHideFlow : MediaPickerAction
+    data class RequestMoveSelectedItems(val selectionItems: Set<SelectionItem>) : MediaPickerAction
+    data class MoveItemsToFolder(val targetPath: String) : MediaPickerAction
+    data class CreateFolderAndMoveItems(val folderName: String) : MediaPickerAction
+    data object DismissMoveFlow : MediaPickerAction
 }
 
 sealed interface MediaPickerEvent {

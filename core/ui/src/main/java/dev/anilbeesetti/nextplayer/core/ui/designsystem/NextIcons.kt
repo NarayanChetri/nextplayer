@@ -3,6 +3,7 @@ package dev.anilbeesetti.nextplayer.core.ui.designsystem
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.CompareArrows
+import androidx.compose.material.icons.automirrored.rounded.DriveFileMove
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.AppSettingsAlt
 import androidx.compose.material.icons.rounded.ArrowDownward
@@ -112,6 +113,7 @@ object NextIcons {
     val Length = Icons.Rounded.Straighten
     val Link = Icons.Rounded.Link
     val Location = Icons.Rounded.LocationOn
+    val Move = Icons.AutoMirrored.Rounded.DriveFileMove
     val Movie = Icons.Rounded.LocalMovies
     val Pip = Icons.Rounded.PictureInPictureAlt
     val Pinch = Icons.Rounded.Pinch

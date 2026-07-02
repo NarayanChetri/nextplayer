@@ -199,6 +199,12 @@
     <string name="skip_silence">Skip silence</string>
     <string name="folder">Folder</string>
     <string name="folders">Folders</string>
+    <string name="move">Move</string>
+    <string name="move_to_folder">Move to folder</string>
+    <string name="folder_name">Folder name</string>
+    <string name="no_folders_found">No folders found</string>
+    <string name="moving_videos">Moving videos…</string>
+    <string name="create_and_move">Create &amp; move</string>
     <string name="tree">Tree</string>
     <string name="played_progress">Played progress</string>
     <string name="media_view_mode">Media view mode</string>
