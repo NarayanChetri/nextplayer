@@ -86,6 +86,7 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
+import dev.anilbeesetti.nextplayer.core.common.extensions.prettyName
 import dev.anilbeesetti.nextplayer.core.common.storagePermission
 import dev.anilbeesetti.nextplayer.core.domain.MediaHolder
 import dev.anilbeesetti.nextplayer.core.media.services.MediaOperationsService
@@ -119,6 +120,7 @@ import dev.anilbeesetti.nextplayer.feature.videopicker.composables.vault.VaultPr
 import dev.anilbeesetti.nextplayer.feature.videopicker.screens.vault.VAULT_PIN_LENGTH
 import dev.anilbeesetti.nextplayer.feature.videopicker.state.SelectionItem
 import dev.anilbeesetti.nextplayer.feature.videopicker.state.rememberSelectionManager
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -543,6 +545,8 @@ internal fun MediaPickerScreen(
 
     MoveFlowDialogs(
         moveFlow = uiState.moveFlow,
+        onNavigateToFolder = { onAction(MediaPickerAction.NavigateMoveFolder(it)) },
+        onNavigateUp = { onAction(MediaPickerAction.NavigateMoveFolderUp) },
         onMoveToFolder = { onAction(MediaPickerAction.MoveItemsToFolder(it)) },
         onCreateFolderAndMove = { onAction(MediaPickerAction.CreateFolderAndMoveItems(it)) },
         onDismiss = { onAction(MediaPickerAction.DismissMoveFlow) },
@@ -664,6 +668,8 @@ private fun HideFlowDialogs(
 @Composable
 private fun MoveFlowDialogs(
     moveFlow: MoveFlowState,
+    onNavigateToFolder: (String?) -> Unit,
+    onNavigateUp: () -> Unit,
     onMoveToFolder: (String) -> Unit,
     onCreateFolderAndMove: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -677,8 +683,11 @@ private fun MoveFlowDialogs(
 
         is MoveFlowState.SelectingFolder -> {
             MoveToFolderDialog(
+                currentPath = moveFlow.currentPath,
                 folders = moveFlow.folders,
-                onFolderSelected = onMoveToFolder,
+                onFolderOpened = onNavigateToFolder,
+                onNavigateUp = onNavigateUp,
+                onMoveHere = { moveFlow.currentPath?.let(onMoveToFolder) },
                 onCreateFolder = onCreateFolderAndMove,
                 onDismiss = onDismiss,
             )
@@ -689,27 +698,54 @@ private fun MoveFlowDialogs(
 @Composable
 private fun MoveToFolderDialog(
     modifier: Modifier = Modifier,
+    currentPath: String?,
     folders: List<Folder>,
-    onFolderSelected: (String) -> Unit,
+    onFolderOpened: (String) -> Unit,
+    onNavigateUp: () -> Unit,
+    onMoveHere: () -> Unit,
     onCreateFolder: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var newFolderName by rememberSaveable { mutableStateOf("") }
+    // Reset the typed name whenever the browsed folder changes, so a name typed for one folder
+    // doesn't accidentally get created inside a different one.
+    var newFolderName by rememberSaveable(currentPath) { mutableStateOf("") }
 
     NextDialog(
         onDismissRequest = onDismiss,
-        title = { Text(text = stringResource(R.string.move_to_folder)) },
+        title = {
+            Column {
+                Text(text = stringResource(R.string.move_to_folder))
+                if (currentPath != null) {
+                    Row(
+                        modifier = Modifier
+                            .padding(top = 6.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable(onClick = onNavigateUp)
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(
+                            imageVector = NextIcons.ArrowBack,
+                            contentDescription = stringResource(R.string.navigate_up),
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = File(currentPath).prettyName,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Normal,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        },
         modifier = modifier,
         content = {
             Column {
-                OutlinedTextField(
-                    value = newFolderName,
-                    onValueChange = { newFolderName = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text(text = stringResource(R.string.folder_name)) },
-                    singleLine = true,
-                )
-                Spacer(modifier = Modifier.height(12.dp))
                 if (folders.isEmpty()) {
                     Text(
                         text = stringResource(R.string.no_folders_found),
@@ -718,13 +754,13 @@ private fun MoveToFolderDialog(
                         modifier = Modifier.padding(vertical = 8.dp),
                     )
                 } else {
-                    LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
+                    LazyColumn(modifier = Modifier.heightIn(max = 280.dp)) {
                         items(items = folders, key = { it.path }) { folder ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(8.dp))
-                                    .clickable { onFolderSelected(folder.path) }
+                                    .clickable { onFolderOpened(folder.path) }
                                     .padding(vertical = 10.dp, horizontal = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -739,19 +775,37 @@ private fun MoveToFolderDialog(
                                     style = MaterialTheme.typography.bodyLarge,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f),
                                 )
                             }
                         }
                     }
                 }
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = newFolderName,
+                    onValueChange = { newFolderName = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text(text = stringResource(R.string.folder_name)) },
+                    singleLine = true,
+                    enabled = currentPath != null,
+                )
             }
         },
         confirmButton = {
-            TextButton(
-                enabled = newFolderName.isNotBlank(),
-                onClick = { onCreateFolder(newFolderName) },
-            ) {
-                Text(text = stringResource(R.string.create_and_move))
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(
+                    enabled = newFolderName.isNotBlank() && currentPath != null,
+                    onClick = { onCreateFolder(newFolderName) },
+                ) {
+                    Text(text = stringResource(R.string.create_and_move))
+                }
+                TextButton(
+                    enabled = currentPath != null,
+                    onClick = onMoveHere,
+                ) {
+                    Text(text = stringResource(R.string.move_here))
+                }
             }
         },
         dismissButton = { CancelButton(onClick = onDismiss) },

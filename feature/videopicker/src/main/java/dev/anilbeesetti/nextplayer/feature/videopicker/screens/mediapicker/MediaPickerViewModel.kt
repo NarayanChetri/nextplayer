@@ -13,8 +13,8 @@ import dev.anilbeesetti.nextplayer.core.data.repository.MediaRepository
 import dev.anilbeesetti.nextplayer.core.data.repository.PreferencesRepository
 import dev.anilbeesetti.nextplayer.core.data.repository.VaultPinRepository
 import dev.anilbeesetti.nextplayer.core.data.repository.VaultRepository
+import dev.anilbeesetti.nextplayer.core.domain.GetFileSystemFoldersUseCase
 import dev.anilbeesetti.nextplayer.core.domain.GetRecentlyPlayedVideoUseCase
-import dev.anilbeesetti.nextplayer.core.domain.GetSortedFoldersUseCase
 import dev.anilbeesetti.nextplayer.core.domain.GetSortedMediaUseCase
 import dev.anilbeesetti.nextplayer.core.domain.GetSortedVideosUseCase
 import dev.anilbeesetti.nextplayer.core.domain.MediaHolder
@@ -46,7 +46,7 @@ class MediaPickerViewModel @Inject constructor(
     private val getSortedMediaUseCase: GetSortedMediaUseCase,
     private val getRecentlyPlayedVideoUseCase: GetRecentlyPlayedVideoUseCase,
     private val getSortedVideosUseCase: GetSortedVideosUseCase,
-    private val getSortedFoldersUseCase: GetSortedFoldersUseCase,
+    private val getFileSystemFoldersUseCase: GetFileSystemFoldersUseCase,
     private val mediaOperationsService: MediaOperationsService,
     private val mediaRepository: MediaRepository,
     private val preferencesRepository: PreferencesRepository,
@@ -92,6 +92,8 @@ class MediaPickerViewModel @Inject constructor(
             MediaPickerAction.ConfirmHidePendingItems -> confirmHidePendingItems()
             MediaPickerAction.DismissHideFlow -> uiStateInternal.update { it.copy(hideFlow = HideFlowState.Idle) }
             is MediaPickerAction.RequestMoveSelectedItems -> requestMoveSelectedItems(action.selectionItems)
+            is MediaPickerAction.NavigateMoveFolder -> navigateMoveFolder(action.path)
+            MediaPickerAction.NavigateMoveFolderUp -> navigateMoveFolderUp()
             is MediaPickerAction.MoveItemsToFolder -> moveItemsToFolder(action.targetPath)
             is MediaPickerAction.CreateFolderAndMoveItems -> createFolderAndMoveItems(action.folderName)
             MediaPickerAction.DismissMoveFlow -> uiStateInternal.update { it.copy(moveFlow = MoveFlowState.Idle) }
@@ -229,11 +231,53 @@ class MediaPickerViewModel @Inject constructor(
         viewModelScope.launch {
             val videoItems = selectedItems.toVideos()
             if (videoItems.isEmpty()) return@launch
-            val folders = getSortedFoldersUseCase(null).first()
+            uiStateInternal.update { it.copy(moveFlow = MoveFlowState.Processing) }
+
+            val volumes = getFileSystemFoldersUseCase(null)
+            // Skip the pointless single-item "pick a volume" step when there's only one, same as
+            // the rest of the app does for its folder-tree view.
+            val (startPath, startFolders) = if (volumes.size <= 1) {
+                val root = volumes.firstOrNull()?.path ?: Environment.getExternalStorageDirectory().path
+                root to getFileSystemFoldersUseCase(root)
+            } else {
+                null to volumes
+            }
+
             uiStateInternal.update {
-                it.copy(moveFlow = MoveFlowState.SelectingFolder(items = videoItems, folders = folders))
+                it.copy(
+                    moveFlow = MoveFlowState.SelectingFolder(
+                        items = videoItems,
+                        currentPath = startPath,
+                        rootPath = startPath,
+                        folders = startFolders,
+                    ),
+                )
             }
         }
+    }
+
+    private fun navigateMoveFolder(path: String?) {
+        val pending = uiStateInternal.value.moveFlow as? MoveFlowState.SelectingFolder ?: return
+        viewModelScope.launch {
+            val folders = getFileSystemFoldersUseCase(path)
+            val rootPath = when {
+                path == null -> null
+                // Just stepped into a volume from the top-level volume list: that volume becomes
+                // the new floor for "up" navigation.
+                pending.currentPath == null -> path
+                else -> pending.rootPath
+            }
+            uiStateInternal.update {
+                it.copy(moveFlow = pending.copy(currentPath = path, rootPath = rootPath, folders = folders))
+            }
+        }
+    }
+
+    private fun navigateMoveFolderUp() {
+        val pending = uiStateInternal.value.moveFlow as? MoveFlowState.SelectingFolder ?: return
+        val current = pending.currentPath ?: return
+        val target = if (current == pending.rootPath) null else File(current).parent
+        navigateMoveFolder(target)
     }
 
     private fun moveItemsToFolder(targetPath: String) {
@@ -249,8 +293,10 @@ class MediaPickerViewModel @Inject constructor(
 
     private fun createFolderAndMoveItems(folderName: String) {
         if (folderName.isBlank()) return
-        val moviesRoot = File(Environment.getExternalStorageDirectory(), Environment.DIRECTORY_MOVIES)
-        moveItemsToFolder(File(moviesRoot, folderName).path)
+        val pending = uiStateInternal.value.moveFlow as? MoveFlowState.SelectingFolder ?: return
+        val parentDir = pending.currentPath?.let { File(it) }
+            ?: File(Environment.getExternalStorageDirectory(), Environment.DIRECTORY_MOVIES)
+        moveItemsToFolder(File(parentDir, folderName).path)
     }
 
     private suspend fun Set<SelectionItem>.toVideos(): List<Video> {
@@ -300,7 +346,12 @@ sealed interface HideFlowState {
 
 sealed interface MoveFlowState {
     data object Idle : MoveFlowState
-    data class SelectingFolder(val items: List<Video>, val folders: List<Folder>) : MoveFlowState
+    data class SelectingFolder(
+        val items: List<Video>,
+        val currentPath: String?,
+        val rootPath: String?,
+        val folders: List<Folder>,
+    ) : MoveFlowState
     data object Processing : MoveFlowState
 }
 
@@ -319,6 +370,8 @@ sealed interface MediaPickerAction {
     data object ConfirmHidePendingItems : MediaPickerAction
     data object DismissHideFlow : MediaPickerAction
     data class RequestMoveSelectedItems(val selectionItems: Set<SelectionItem>) : MediaPickerAction
+    data class NavigateMoveFolder(val path: String?) : MediaPickerAction
+    data object NavigateMoveFolderUp : MediaPickerAction
     data class MoveItemsToFolder(val targetPath: String) : MediaPickerAction
     data class CreateFolderAndMoveItems(val folderName: String) : MediaPickerAction
     data object DismissMoveFlow : MediaPickerAction
