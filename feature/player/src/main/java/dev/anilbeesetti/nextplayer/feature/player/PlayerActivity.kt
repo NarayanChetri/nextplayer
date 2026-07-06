@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -34,6 +35,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import dagger.hilt.android.AndroidEntryPoint
 import dev.anilbeesetti.nextplayer.core.common.extensions.getInitialDirectoryUri
 import dev.anilbeesetti.nextplayer.core.common.extensions.getMediaContentUri
+import dev.anilbeesetti.nextplayer.core.ui.R
 import dev.anilbeesetti.nextplayer.core.ui.theme.NextPlayerTheme
 import dev.anilbeesetti.nextplayer.core.common.service.registerForSuspendActivityResult
 import dev.anilbeesetti.nextplayer.feature.player.extensions.OpenDocumentAtInitialUri
@@ -192,25 +194,34 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * Videos shared from other apps arrive as ACTION_SEND (single video) or
-     * ACTION_SEND_MULTIPLE (several videos at once) with uris in EXTRA_STREAM,
-     * not as ACTION_VIEW with intent.data like our other entry points.
-     * This normalizes a share intent into that same shape, and stashes any
-     * extra videos in [sharedPlaylistUris], so the rest of the playback code
-     * doesn't need to know or care that the video(s) came from a share.
-     *
-     * Must be called once per fresh intent (onCreate / onNewIntent), not on
-     * every startPlayback(), since it mutates the intent's action to VIEW.
-     */
+/**
+ * Normalizes shared videos (`ACTION_SEND`/`_MULTIPLE` via `EXTRA_STREAM`) 
+ * into standard `ACTION_VIEW` format, stashing extra URIs in [sharedPlaylistUris].
+ * Prevents downstream code from needing share-specific logic.
+ * * Call exactly once per fresh intent (`onCreate`/`onNewIntent`) as it mutates the intent.
+ */
     private fun consumeShareIntentIfNeeded() {
-        val sharedUris: List<Uri> = when (intent.action) {
+        val isShareIntent = intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_SEND_MULTIPLE
+        if (!isShareIntent) return
+
+        val rawUris: List<Uri> = when (intent.action) {
             Intent.ACTION_SEND -> intent.getParcelableExtraCompat<Uri>(Intent.EXTRA_STREAM)?.let { listOf(it) }
             Intent.ACTION_SEND_MULTIPLE -> intent.getParcelableArrayListExtraCompat<Uri>(Intent.EXTRA_STREAM)
             else -> null
-        }.orEmpty().filter { it.isLikelyVideo() }
+        }.orEmpty()
 
-        if (sharedUris.isEmpty()) return
+        val sharedUris = rawUris.filter { it.isLikelyVideo() }
+
+        // Reached when the share came in through our "*/*" catch-all filter (needed for
+        // OEM galleries that share videos with a generic mime type) but what was actually
+        // shared isn't a video - e.g. an image. Without this check, intent.action/data are
+        // left as-is, startPlayback() finds nothing to play, and the user is stuck looking
+        // at a blank player screen. Tell them what happened and back out instead.
+        if (sharedUris.isEmpty()) {
+            Toast.makeText(this, getString(R.string.shared_file_not_a_video), Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
 
         sharedUris.forEach(::tryTakePersistableReadPermission)
 
@@ -375,6 +386,7 @@ class PlayerActivity : ComponentActivity() {
         if (intent.data != null || isShareIntent) {
             setIntent(intent)
             consumeShareIntentIfNeeded()
+            if (isFinishing) return
             isIntentNew = true
             if (mediaController != null) {
                 startPlayback()
