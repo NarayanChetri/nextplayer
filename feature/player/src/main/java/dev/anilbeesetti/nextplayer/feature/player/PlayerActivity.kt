@@ -64,6 +64,9 @@ class PlayerActivity : ComponentActivity() {
     private var playInBackground: Boolean = false
     private var isIntentNew: Boolean = true
 
+    /** Extra videos from a multi-video share (ACTION_SEND_MULTIPLE), if any. */
+    private var sharedPlaylistUris: List<Uri> = emptyList()
+
     /**
      * Player
      */
@@ -140,6 +143,7 @@ class PlayerActivity : ComponentActivity() {
             }
         }
 
+        consumeShareIntentIfNeeded()
         playerApi = PlayerApi(this)
     }
 
@@ -188,6 +192,67 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Videos shared from other apps arrive as ACTION_SEND (single video) or
+     * ACTION_SEND_MULTIPLE (several videos at once) with uris in EXTRA_STREAM,
+     * not as ACTION_VIEW with intent.data like our other entry points.
+     * This normalizes a share intent into that same shape, and stashes any
+     * extra videos in [sharedPlaylistUris], so the rest of the playback code
+     * doesn't need to know or care that the video(s) came from a share.
+     *
+     * Must be called once per fresh intent (onCreate / onNewIntent), not on
+     * every startPlayback(), since it mutates the intent's action to VIEW.
+     */
+    private fun consumeShareIntentIfNeeded() {
+        val sharedUris: List<Uri> = when (intent.action) {
+            Intent.ACTION_SEND -> intent.getParcelableExtraCompat<Uri>(Intent.EXTRA_STREAM)?.let { listOf(it) }
+            Intent.ACTION_SEND_MULTIPLE -> intent.getParcelableArrayListExtraCompat<Uri>(Intent.EXTRA_STREAM)
+            else -> null
+        }.orEmpty().filter { it.isLikelyVideo() }
+
+        if (sharedUris.isEmpty()) return
+
+        sharedUris.forEach(::tryTakePersistableReadPermission)
+
+        sharedPlaylistUris = sharedUris
+        intent.action = Intent.ACTION_VIEW
+        intent.data = sharedUris.first()
+    }
+
+    private fun Uri.isLikelyVideo(): Boolean {
+        // Some senders don't set a mime type at all - if we can't tell, let it through
+        // rather than silently dropping a video the user explicitly shared.
+        val mimeType = contentResolver.getType(this) ?: return true
+        return mimeType.startsWith("video/")
+    }
+
+    private fun tryTakePersistableReadPermission(uri: Uri) {
+        try {
+            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } catch (e: SecurityException) {
+            // Not every sender grants a persistable permission - that's fine,
+            // playback for this session still works off the temporary grant.
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private inline fun <reified T : android.os.Parcelable> Intent.getParcelableExtraCompat(name: String): T? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getParcelableExtra(name, T::class.java)
+        } else {
+            getParcelableExtra(name)
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private inline fun <reified T : android.os.Parcelable> Intent.getParcelableArrayListExtraCompat(name: String): ArrayList<T>? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getParcelableArrayListExtra(name, T::class.java)
+        } else {
+            getParcelableArrayListExtra(name)
+        }
+    }
+
     private fun startPlayback() {
         val uri = intent.data ?: return
 
@@ -210,6 +275,7 @@ class PlayerActivity : ComponentActivity() {
     private suspend fun playVideo(uri: Uri) = withContext(Dispatchers.Default) {
         val mediaContentUri = getMediaContentUri(uri)
         val playlist = playerApi.getPlaylist().takeIf { it.isNotEmpty() }
+            ?: sharedPlaylistUris.takeIf { it.size > 1 }?.map { it.toString() }
             ?: mediaContentUri?.let { mediaUri ->
                 viewModel.getPlaylistFromUri(mediaUri)
                     .map { it.uriString }
@@ -305,8 +371,10 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (intent.data != null) {
+        val isShareIntent = intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_SEND_MULTIPLE
+        if (intent.data != null || isShareIntent) {
             setIntent(intent)
+            consumeShareIntentIfNeeded()
             isIntentNew = true
             if (mediaController != null) {
                 startPlayback()
