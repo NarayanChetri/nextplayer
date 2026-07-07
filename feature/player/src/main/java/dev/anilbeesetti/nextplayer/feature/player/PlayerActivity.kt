@@ -289,8 +289,12 @@ class PlayerActivity : ComponentActivity() {
 
     private suspend fun playVideo(uri: Uri) = withContext(Dispatchers.Default) {
         val mediaContentUri = getMediaContentUri(uri)
+        // sharedPlaylistUris.isNotEmpty() covers BOTH single and multi-video shares.
+        // Without this, a single shared video fell through to the folder-wide playlist
+        // below, which is why Next/Previous showed up and browsed the whole folder
+        // instead of just the video that was actually shared.
         val playlist = playerApi.getPlaylist().takeIf { it.isNotEmpty() }
-            ?: sharedPlaylistUris.takeIf { it.size > 1 }?.map { it.toString() }
+            ?: sharedPlaylistUris.takeIf { it.isNotEmpty() }?.map { it.toString() }
             ?: mediaContentUri?.let { mediaUri ->
                 viewModel.getPlaylistFromUri(mediaUri)
                     .map { it.uriString }
