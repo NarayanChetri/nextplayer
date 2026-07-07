@@ -145,8 +145,12 @@ class PlayerActivity : ComponentActivity() {
             }
         }
 
-        consumeShareIntentIfNeeded()
+        // playerApi must be ready before consumeShareIntentIfNeeded(), because that function
+        // can call finish() early (e.g. shared file isn't a video) and finish() reads playerApi.
+        // Doing this in the wrong order is what caused the "not a video" toast to crash instead
+        // of showing, since playerApi.shouldReturnResult was accessed while still uninitialized.
         playerApi = PlayerApi(this)
+        consumeShareIntentIfNeeded()
     }
 
     override fun onStart() {
@@ -369,6 +373,13 @@ class PlayerActivity : ComponentActivity() {
     }
 
     override fun finish() {
+        // Guard against finish() being called before playerApi is set (e.g. a future code
+        // path that bails out early in onCreate). Without this, a lateinit crash here would
+        // replace whatever UX (toast, etc.) we were trying to show with the crash screen.
+        if (!::playerApi.isInitialized) {
+            super.finish()
+            return
+        }
         if (playerApi.shouldReturnResult) {
             val result = playerApi.getResult(
                 isPlaybackFinished = isPlaybackFinished,
