@@ -145,10 +145,7 @@ class PlayerActivity : ComponentActivity() {
             }
         }
 
-        // playerApi must be ready before consumeShareIntentIfNeeded(), because that function
-        // can call finish() early (e.g. shared file isn't a video) and finish() reads playerApi.
-        // Doing this in the wrong order is what caused the "not a video" toast to crash instead
-        // of showing, since playerApi.shouldReturnResult was accessed while still uninitialized.
+        // playerApi must be set before this, since a non-video share calls finish() early.
         playerApi = PlayerApi(this)
         consumeShareIntentIfNeeded()
     }
@@ -198,12 +195,10 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-/**
- * Normalizes shared videos (`ACTION_SEND`/`_MULTIPLE` via `EXTRA_STREAM`) 
- * into standard `ACTION_VIEW` format, stashing extra URIs in [sharedPlaylistUris].
- * Prevents downstream code from needing share-specific logic.
- * * Call exactly once per fresh intent (`onCreate`/`onNewIntent`) as it mutates the intent.
- */
+    /**
+     * Normalizes a share (`ACTION_SEND`/`_MULTIPLE`) into `ACTION_VIEW`, stashing extra
+     * URIs in [sharedPlaylistUris]. Call once per fresh intent, it mutates the intent.
+     */
     private fun consumeShareIntentIfNeeded() {
         val isShareIntent = intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_SEND_MULTIPLE
         if (!isShareIntent) return
@@ -216,11 +211,7 @@ class PlayerActivity : ComponentActivity() {
 
         val sharedUris = rawUris.filter { it.isLikelyVideo() }
 
-        // Reached when the share came in through our "*/*" catch-all filter (needed for
-        // OEM galleries that share videos with a generic mime type) but what was actually
-        // shared isn't a video - e.g. an image. Without this check, intent.action/data are
-        // left as-is, startPlayback() finds nothing to play, and the user is stuck looking
-        // at a blank player screen. Tell them what happened and back out instead.
+        // Non-video share caught by our "*/*" filter - bail out instead of showing a blank player.
         if (sharedUris.isEmpty()) {
             Toast.makeText(this, getString(R.string.shared_file_not_a_video), Toast.LENGTH_SHORT).show()
             finish()
@@ -235,8 +226,7 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun Uri.isLikelyVideo(): Boolean {
-        // Some senders don't set a mime type at all - if we can't tell, let it through
-        // rather than silently dropping a video the user explicitly shared.
+        // No mime type from sender - let it through rather than block a real video.
         val mimeType = contentResolver.getType(this) ?: return true
         return mimeType.startsWith("video/")
     }
@@ -245,8 +235,7 @@ class PlayerActivity : ComponentActivity() {
         try {
             contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         } catch (e: SecurityException) {
-            // Not every sender grants a persistable permission - that's fine,
-            // playback for this session still works off the temporary grant.
+            // Sender didn't grant a persistable permission - fine, temporary grant still works.
         }
     }
 
@@ -289,10 +278,7 @@ class PlayerActivity : ComponentActivity() {
 
     private suspend fun playVideo(uri: Uri) = withContext(Dispatchers.Default) {
         val mediaContentUri = getMediaContentUri(uri)
-        // sharedPlaylistUris.isNotEmpty() covers BOTH single and multi-video shares.
-        // Without this, a single shared video fell through to the folder-wide playlist
-        // below, which is why Next/Previous showed up and browsed the whole folder
-        // instead of just the video that was actually shared.
+        // Shared videos (single or multiple) only ever play what was shared, never the folder.
         val playlist = playerApi.getPlaylist().takeIf { it.isNotEmpty() }
             ?: sharedPlaylistUris.takeIf { it.isNotEmpty() }?.map { it.toString() }
             ?: mediaContentUri?.let { mediaUri ->
@@ -377,9 +363,7 @@ class PlayerActivity : ComponentActivity() {
     }
 
     override fun finish() {
-        // Guard against finish() being called before playerApi is set (e.g. a future code
-        // path that bails out early in onCreate). Without this, a lateinit crash here would
-        // replace whatever UX (toast, etc.) we were trying to show with the crash screen.
+        // Guard in case finish() is ever called before playerApi is set.
         if (!::playerApi.isInitialized) {
             super.finish()
             return
