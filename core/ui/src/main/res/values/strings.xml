@@ -96,7 +96,7 @@
     <string name="force_rescan_storage">Force rescan storage</string>
     <string name="force_rescan_storage_desc">Caution: Initiating a full storage rescan may cause increased resource usage on your device</string>
     <string name="media_library_description">Scan and manage media library</string>
-    <string name="scanning_storage">Scanning storageâ€¦</string>
+    <string name="scanning_storage">Scanning storage…</string>
     <string name="manage_folders">Manage folders</string>
     <string name="manage_folders_desc">Select folders to be excluded in the media library</string>
     <string name="video">Video</string>
@@ -161,6 +161,8 @@
     <string name="trash">Trash</string>
     <string name="move_to_trash">Move to trash</string>
     <string name="move_to_trash_info">Selected items will be moved to trash.</string>
+    <string name="trash_empty_title">Trash is empty</string>
+    <string name="trash_empty_description">Deleted videos will appear here before they\'re permanently removed.</string>
     <string name="delete_file">The following file will be deleted permanently</string>
     <string name="subtitle_text_encoding">Subtitle text encoding</string>
     <string name="fast_playback_speed">%.1fx speed</string>
@@ -332,11 +334,11 @@
     <string name="hide_one_video_confirmation">Hide this video?</string>
     <string name="hide_videos_confirmation">Hide %1$d videos?</string>
     <string name="hide_video_info">Hidden videos are moved into a private vault protected by a PIN and removed from your gallery.</string>
-    <string name="hiding_videos_in_progress">Hidingâ€¦</string>
-    <string name="unhiding_videos_in_progress">Unhidingâ€¦</string>
+    <string name="hiding_videos_in_progress">Hiding…</string>
+    <string name="unhiding_videos_in_progress">Unhiding…</string>
     <plurals name="videos_relocated_to_movies">
-        <item quantity="one">Couldn\'t restore to its original folder â€” moved to Movies/</item>
-        <item quantity="other">Couldn\'t restore %1$d videos to their original folders â€” moved to Movies/</item>
+        <item quantity="one">Couldn\'t restore to its original folder — moved to Movies/</item>
+        <item quantity="other">Couldn\'t restore %1$d videos to their original folders — moved to Movies/</item>
     </plurals>
     <string name="hiding_videos">Hiding\u2026</string>
     <string name="set_vault_pin">Set vault PIN</string>
@@ -416,7 +418,7 @@
     <string name="sftp_root_inaccessible">The SFTP root path is missing or inaccessible.</string>
     <string name="use_https">Use HTTPS</string>
     <string name="test_and_save">Test &amp; Save</string>
-    <string name="connecting">Connectingâ€¦</string>
+    <string name="connecting">Connecting…</string>
     <string name="connection_failed">Couldn\'t connect. Check the details and try again.</string>
     <string name="no_connections_title">No connections yet</string>
     <string name="no_connections_description">Add an SMB, FTP, SFTP or WebDAV connection to browse and play videos from your network.</string>
@@ -428,8 +430,8 @@
     <!-- Copy / Move -->
     <string name="copy">Copy</string>
     <string name="move">Move</string>
-    <string name="copying_videos_in_progress">Copyingâ€¦</string>
-    <string name="moving_videos_in_progress">Movingâ€¦</string>
+    <string name="copying_videos_in_progress">Copying…</string>
+    <string name="moving_videos_in_progress">Moving…</string>
     <string name="transfer_file_progress">File %1$d of %2$d</string>
     <plurals name="copied_videos_result">
         <item quantity="one">Copied 1 video</item>
@@ -476,16 +478,16 @@
     <string name="create">Create</string>
     <string name="save">Save</string>
     <string name="name_required">Enter a playlist name.</string>
-    <string name="saving_playlist">Saving playlistâ€¦</string>
+    <string name="saving_playlist">Saving playlist…</string>
     <string name="no_playlists_title">No playlists yet</string>
     <string name="no_playlists_description">Create a local playlist or add an M3U source to start watching.</string>
     <string name="local_playlist">Local</string>
     <string name="delete_playlist">Delete playlist</string>
-    <string name="delete_playlist_confirmation">Delete â€œ%1$sâ€ and its saved order?</string>
+    <string name="delete_playlist_confirmation">Delete "%1$s" and its saved order?</string>
     <string name="playlist_actions">Playlist actions</string>
     <string name="play_all">Play all</string>
     <string name="remove_video">Remove video</string>
-    <string name="remove_video_confirmation">Remove â€œ%1$sâ€ from this playlist?</string>
+    <string name="remove_video_confirmation">Remove "%1$s" from this playlist?</string>
     <string name="reorder_playlist">Reorder playlist</string>
     <string name="finish_reordering">Finish reordering</string>
     <string name="reorder_playlist_item">Reorder playlist item</string>
