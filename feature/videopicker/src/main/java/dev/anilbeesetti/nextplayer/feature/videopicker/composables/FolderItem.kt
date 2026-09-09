@@ -346,10 +346,9 @@ private fun NewVideosCountBadge(
 
     Box(
         modifier = modifier
-            .sizeIn(minWidth = 20.dp, minHeight = 20.dp)
+            .size(20.dp)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.primary)
-            .padding(4.dp)
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
@@ -358,6 +357,7 @@ private fun NewVideosCountBadge(
             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
             color = MaterialTheme.colorScheme.onPrimary,
             maxLines = 1,
+            softWrap = false,
         )
     }
 }
