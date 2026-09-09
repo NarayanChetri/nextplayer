@@ -230,6 +230,11 @@ fun VideoGridItem(
     )
 }
 
+/**
+ * A thumbnail is produced by decoding the video itself, so Coil has to read the whole source
+ * before it can extract a frame. For a remote video that means downloading the entire file just
+ * to draw a list item, so those fall back to the placeholder icon.
+ */
 private fun Video.isLocalUri(): Boolean {
     val scheme = uriString.toUri().scheme
     return scheme.equals("content", ignoreCase = true) || scheme.equals("file", ignoreCase = true)

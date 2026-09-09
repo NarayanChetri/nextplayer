@@ -95,16 +95,16 @@ class GetFolderTreeMediaUseCase @Inject constructor(
 
     /** Distinct immediate subfolders of [path] that contain at least one of [videos] (which are all beneath [path]). */
     private fun immediateChildFolders(path: String, videos: List<Video>): List<String> {
-        val prefix = path + File.separator
+        val prefix = "$path/"
         return videos
             .filter { it.parentPath != path }
-            .map { prefix + it.parentPath.removePrefix(prefix).substringBefore(File.separator) }
+            .map { prefix + it.parentPath.removePrefix(prefix).substringBefore('/') }
             .distinct()
     }
 
     /** All videos located somewhere beneath [path]. */
     private fun videosUnder(path: String, videos: List<Video>): List<Video> {
-        val prefix = path + File.separator
+        val prefix = "$path/"
         return videos.filter { it.path.startsWith(prefix) }
     }
 
