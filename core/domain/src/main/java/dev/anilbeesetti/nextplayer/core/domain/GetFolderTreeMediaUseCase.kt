@@ -23,7 +23,7 @@ import javax.inject.Inject
  * Each level shows the videos directly inside the current folder plus a [Folder] for every
  * immediate subfolder that contains videos. The top level (folderPath == null) spans all storage
  * volumes: when more than one volume holds videos each volume is shown as a folder ("Internal
- * Storage", a USB drive, â€¦); with a single volume its contents are shown directly.
+ * Storage", a USB drive, ...); with a single volume its contents are shown directly.
  */
 class GetFolderTreeMediaUseCase @Inject constructor(
     private val mediaRepository: MediaRepository,
@@ -48,8 +48,8 @@ class GetFolderTreeMediaUseCase @Inject constructor(
     }
 
     /**
-     * The top level: one folder per storage volume that contains videos, or â€” when only a single
-     * volume has videos â€” that volume's contents shown directly (no volume wrapper).
+     * The top level: one folder per storage volume that contains videos, or -- when only a single
+     * volume has videos -- that volume's contents shown directly (no volume wrapper).
      */
     private fun topLevelMedia(videos: List<Video>, excludedFolders: Collection<String>, sort: Sort): MediaHolder {
         val volumeRoots = videos.mapNotNull { volumeRootOf(it.path) }.distinct()
