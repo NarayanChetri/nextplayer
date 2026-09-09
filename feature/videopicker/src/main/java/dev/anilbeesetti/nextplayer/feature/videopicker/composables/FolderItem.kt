@@ -346,10 +346,10 @@ private fun NewVideosCountBadge(
 
     Box(
         modifier = modifier
-            .sizeIn(minWidth = 18.dp, minHeight = 18.dp)
+            .sizeIn(minWidth = 20.dp, minHeight = 20.dp)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.primary)
-            .padding(horizontal = 4.dp, vertical = 2.dp)
+            .padding(4.dp)
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
