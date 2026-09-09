@@ -53,3 +53,16 @@ data class Video(
 
 fun List<Video>.recentPlayed(): Video? =
     filter { it.lastPlayedAt != null }.sortedByDescending { it.lastPlayedAt?.time }.firstOrNull()
+
+private const val NEW_VIDEO_THRESHOLD_MILLIS: Long = 7 * 24 * 60 * 60 * 1000L
+
+/**
+ * A video is considered "new" if it hasn't been played yet and was added
+ * (as tracked by [Video.dateModified], which is in epoch seconds) within
+ * the last 7 days.
+ */
+fun Video.isNew(nowMillis: Long = System.currentTimeMillis()): Boolean {
+    if (lastPlayedAt != null) return false
+    val addedAtMillis = dateModified * 1000L
+    return nowMillis - addedAtMillis in 0..NEW_VIDEO_THRESHOLD_MILLIS
+}
