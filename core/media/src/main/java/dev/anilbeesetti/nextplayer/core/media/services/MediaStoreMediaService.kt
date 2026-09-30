@@ -55,6 +55,7 @@ class MediaStoreMediaService(
             MediaStore.Video.Media.WIDTH,
             MediaStore.Video.Media.SIZE,
             MediaStore.Video.Media.DATE_MODIFIED,
+            MediaStore.Video.Media.DATE_ADDED,
         )
     }
 
@@ -83,23 +84,33 @@ class MediaStoreMediaService(
             replay = 1,
         )
 
-    override fun observeFolders(folderPath: String?): Flow<List<MediaFolder>> {
-        return mediaChanges
-            .map { fetchFolders(folderPath) }
-            .flowOn(Dispatchers.IO)
-            .distinctUntilChanged()
+    override fun observeFolders(folderPath: String?): Flow<List<MediaFolder>> = observeMedia {
+        fetchFolders(folderPath)
     }
 
-    override fun observeVideos(folderPath: String?): Flow<List<MediaVideo>> {
-        return mediaChanges
-            .map { fetchVideos(folderPath) }
-            .flowOn(Dispatchers.IO)
-            .distinctUntilChanged()
+    override fun observeVideos(folderPath: String?): Flow<List<MediaVideo>> = observeMedia {
+        fetchVideos(folderPath)
     }
 
-    override fun observeTrashVideos(): Flow<List<MediaVideo>> {
+    override fun observeTrashVideos(): Flow<List<MediaVideo>> = observeMedia {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) queryTrashVideos() else emptyList()
+    }
+
+    private fun <T> observeMedia(query: suspend () -> List<T>): Flow<List<T>> {
         return mediaChanges
-            .map { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) queryTrashVideos() else emptyList() }
+            .map {
+                try {
+                    query()
+                } catch (e: IllegalArgumentException) {
+                    // A volume can disappear before MediaProvider opens it. Handle each
+                    // notification separately so observers can recover when storage returns.
+                    if (e.message?.startsWith("Volume ") == true && e.message?.endsWith(" not found") == true) {
+                        emptyList()
+                    } else {
+                        throw e
+                    }
+                }
+            }
             .flowOn(Dispatchers.IO)
             .distinctUntilChanged()
     }
@@ -252,6 +263,7 @@ class MediaStoreMediaService(
         val heightIndex = getColumnIndex(MediaStore.Video.Media.HEIGHT).takeIf { it >= 0 } ?: return null
         val sizeIndex = getColumnIndex(MediaStore.Video.Media.SIZE).takeIf { it >= 0 } ?: return null
         val dateModifiedIndex = getColumnIndex(MediaStore.Video.Media.DATE_MODIFIED).takeIf { it >= 0 } ?: return null
+        val dateAddedIndex = getColumnIndex(MediaStore.Video.Media.DATE_ADDED).takeIf { it >= 0 } ?: return null
 
         val path = getString(dataIndex) ?: return null
         val file = File(path)
@@ -269,6 +281,7 @@ class MediaStoreMediaService(
             height = getInt(heightIndex),
             size = getLong(sizeIndex),
             dateModified = getLong(dateModifiedIndex),
+            dateAdded = getLong(dateAddedIndex),
         )
     }
 }
